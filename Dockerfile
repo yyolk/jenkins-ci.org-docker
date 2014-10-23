@@ -1,5 +1,4 @@
-#FROM java:openjdk-7u65-jdk
-FROM java:7u65
+FROM java:openjdk-7u65-jdk
 
 RUN apt-get update && apt-get install -y wget git curl zip && rm -rf /var/lib/apt/lists/*
 
@@ -14,9 +13,6 @@ RUN curl -L http://updates.jenkins-ci.org/download/war/$JENKINS_VERSION/jenkins.
 ENV JENKINS_HOME /var/jenkins_home
 RUN usermod -m -d "$JENKINS_HOME" jenkins && chown -R jenkins "$JENKINS_HOME"
 VOLUME /var/jenkins_home
-
-# define url prefix for running jenkins behind Apache (https://wiki.jenkins-ci.org/display/JENKINS/Running+Jenkins+behind+Apache)
-ENV JENKINS_PREFIX /
 
 # for main web interface:
 EXPOSE 8080
