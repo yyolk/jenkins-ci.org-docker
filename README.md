@@ -56,7 +56,7 @@ You might need to customize the JVM running Jenkins, typically to pass system pr
 variable for this purpose :
 
 ```
-docker run --name myjenkins -p 8080:8080 -env JAVA_OPTS=-Dhudson.footerURL=http://mycompany.com jenkins
+docker run --name myjenkins -p 8080:8080 --env JAVA_OPTS=-Dhudson.footerURL=http://mycompany.com jenkins
 ```
 
 # Passing Jenkins launcher parameters
@@ -82,12 +82,13 @@ EXPOSE 8083
 
 # Installing more tools
 
-You can run your container as root - and unstall via apt-get, install as part of build steps via jenkins tool installers, or you can create your own Dockerfile to customise, for example: 
+You can run your container as root - and install via apt-get, install as part of build steps via jenkins tool installers, or you can create your own Dockerfile to customise, for example: 
 
 ```
 FROM jenkins
-USER root # if we want to install via apt
-RUN apt-get install -y ruby make more-thing-here
+# if we want to install via apt
+USER root
+RUN apt-get update && apt-get install -y ruby make more-thing-here
 USER jenkins # drop back to the regular jenkins user - good practice
 ```
 
@@ -97,8 +98,9 @@ wish the target installation to look like :
 
 ```
 FROM jenkins
-COPY plugins /usr/share/jenkins/ref/plugins
+COPY plugins.txt /usr/share/jenkins/ref/
 COPY custom.groovy /usr/share/jenkins/ref/init.groovy.d/custom.groovy
+RUN /usr/local/bin/plugins.sh /usr/share/jenkins/ref/plugins.txt
 ```
 
 When jenkins container starts, it will check JENKINS_HOME has this reference content, and copy them there if required. It will not override such files, so if you upgraded some plugins from UI they won't be reverted on next start.
