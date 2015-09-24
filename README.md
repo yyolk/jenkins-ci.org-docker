@@ -12,24 +12,24 @@ http://jenkins-ci.org/
 # Usage
 
 ```
-docker run -p 8080:8080 jenkins
+docker run -p 8080:8080 -p 50000:50000 jenkins
 ```
 
 This will store the workspace in /var/jenkins_home. All Jenkins data lives in there - including plugins and configuration.
 You will probably want to make that a persistent volume (recommended):
 
 ```
-docker run -p 8080:8080 -v /your/home:/var/jenkins_home jenkins
+docker run -p 8080:8080 -p 50000:50000 -v /your/home:/var/jenkins_home jenkins
 ```
 
-This will store the jenkins data in /your/home on the host.
-Ensure that /your/home is accessible by the jenkins user in container (jenkins user - uid 1000).
+This will store the jenkins data in `/your/home` on the host.
+Ensure that `/your/home` is accessible by the jenkins user in container (jenkins user - uid 1000) or use `-u some_other_user` parameter with `docker run`.
 
 
 You can also use a volume container:
 
 ```
-docker run --name myjenkins -p 8080:8080 -v /var/jenkins_home jenkins
+docker run --name myjenkins -p 8080:8080 -p 50000:50000 -v /var/jenkins_home jenkins
 ```
 
 Then myjenkins container has the volume (please do read about docker volume handling to find out more).
@@ -41,12 +41,31 @@ If you bind mount in a volume - you can simply back up that directory
 
 This is highly recommended. Treat the jenkins_home directory as you would a database - in Docker you would generally put a database on a volume.
 
-If your volume is inside a container - you can use ```docker cp $ID:/var/jenkins_home``` command to extract the data.
+If your volume is inside a container - you can use ```docker cp $ID:/var/jenkins_home``` command to extract the data, or other options to find where the volume data is.
 Note that some symlinks on some OSes may be converted to copies (this can confuse jenkins with lastStableBuild links etc)
+
+For more info check Docker docs section on [Managing data in containers](https://docs.docker.com/userguide/dockervolumes/)
+
+# Setting the number of executors
+
+You can specify and set the number of executors of your Jenkins master instance using a groovy script. By default its set to 2 executors, but you can extend the image and change it to your desired number of executors :
+
+```
+# executors.groovy
+Jenkins.instance.setNumExecutors(5)
+```
+
+and `Dockerfile`
+
+```
+FROM jenkins
+COPY executors.groovy /usr/share/jenkins/ref/init.groovy.d/executors.groovy
+```
+
 
 # Attaching build executors
 
-You can run builds on the master (out of the box) buf if you want to attach build slave servers: make sure you map the port: ```-p 50000:50000``` - which will be used when you connect a slave agent.
+You can run builds on the master (out of the box) but if you want to attach build slave servers: make sure you map the port: ```-p 50000:50000``` - which will be used when you connect a slave agent.
 
 <a href="https://registry.hub.docker.com/u/maestrodev/build-agent/">Here</a> is an example docker container you can use as a build server with lots of good tools installed - which is well worth trying.
 
@@ -56,8 +75,24 @@ You might need to customize the JVM running Jenkins, typically to pass system pr
 variable for this purpose :
 
 ```
-docker run --name myjenkins -p 8080:8080 --env JAVA_OPTS=-Dhudson.footerURL=http://mycompany.com jenkins
+docker run --name myjenkins -p 8080:8080 -p 50000:50000 --env JAVA_OPTS=-Dhudson.footerURL=http://mycompany.com jenkins
 ```
+
+# Configuring logging
+
+Jenkins logging can be configured through a properties file and `java.util.logging.config.file` Java property.
+For example:
+
+```
+mkdir data
+cat > data/log.properties <<EOF
+handlers=java.util.logging.ConsoleHandler
+jenkins.level=FINEST
+java.util.logging.ConsoleHandler.level=FINEST
+EOF
+docker run --name myjenkins -p 8080:8080 -p 50000:50000 --env JAVA_OPTS="-Djava.util.logging.config.file=/var/jenkins_home/log.properties" -v `pwd`/data:/var/jenkins_home jenkins
+```
+
 
 # Passing Jenkins launcher parameters
 
@@ -78,6 +113,17 @@ COPY https.pem /var/lib/jenkins/cert
 COPY https.key /var/lib/jenkins/pk
 ENV JENKINS_OPTS --httpPort=-1 --httpsPort=8083 --httpsCertificate=/var/lib/jenkins/cert --httpsPrivateKey=/var/lib/jenkins/pk
 EXPOSE 8083
+```
+
+You can also change the default slave agent port for jenkins by defining `JENKINS_SLAVE_AGENT_PORT` in a sample Dockerfile.
+
+```
+FROM jenkins:1.565.3
+ENV JENKINS_SLAVE_AGENT_PORT 50001
+```
+or as a parameter to docker,
+```
+docker run --name myjenkins -p 8080:8080 -p 50001:50001 --env JENKINS_SLAVE_AGENT_PORT=50001 jenkins
 ```
 
 # Installing more tools
@@ -103,16 +149,25 @@ COPY custom.groovy /usr/share/jenkins/ref/init.groovy.d/custom.groovy
 RUN /usr/local/bin/plugins.sh /usr/share/jenkins/ref/plugins.txt
 ```
 
-When jenkins container starts, it will check JENKINS_HOME has this reference content, and copy them there if required. It will not override such files, so if you upgraded some plugins from UI they won't be reverted on next start.
+When jenkins container starts, it will check JENKINS_HOME has this reference content, and copy them
+there if required. It will not override such files, so if you upgraded some plugins from UI they won't
+be reverted on next start.
 
 Also see [JENKINS-24986](https://issues.jenkins-ci.org/browse/JENKINS-24986)
 
-For your convenience, you also can use a plain text file to define plugins to be installed (using core-support plugin format)
+For your convenience, you also can use a plain text file to define plugins to be installed
+(using core-support plugin format).
+All plugins need to be listed as there is no transitive dependency resolution.
+
 ```
 pluginID:version
-anotherPluginID:version
+credentials:1.18
+maven-plugin:2.7.1
+...
 ```
+
 And in derived Dockerfile just invoke the utility plugin.sh script
+
 ```
 FROM jenkins
 COPY plugins.txt /usr/share/jenkins/plugins.txt
